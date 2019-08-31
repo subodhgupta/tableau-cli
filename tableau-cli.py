@@ -2,20 +2,10 @@
 
 import tableauserverclient as TSC
 from getpass import getpass
-#from os import system, name
 import os
 import time
 import argparse
 import pick
-
-def clear():
-    """Clears the terminal"""
-    # for windows
-    if os.name == 'nt':
-        _ = os.system('cls')
-    # for mac and linux(here, os.name is 'posix')
-    else:
-        _ = os.system('clear')
 
 
 def authenticate(args):
@@ -72,7 +62,7 @@ def select_one(all_objects, args):
     return (all_objects[selected_index - 1])
 
 
-def download_object(server, args, selected_object):
+def download(server, args, selected_object):
     """Downloads the selected object"""
     # set filepath for downloading the file
     if args.download is True:
@@ -98,8 +88,9 @@ def download_object(server, args, selected_object):
 
 def publish(server, args):
     if args.project_name is None and args.project_id is None:
-        all_objects = list_objects(server, args)
-        select_one(all_objects, args)
+        args.object_type = "project"
+        all_objects = get_object_list(server, args)
+        pick_object(all_objects, args)
         args.project_id = args.object_id
     if args.project_name and args.project_id is None:
         options = TSC.RequestOptions()
@@ -119,23 +110,41 @@ def publish(server, args):
         print("Workbook published. ID: {0}".format(new_workbook.id))
 
 
-def refresh():
-    pass
+def refresh(server, args):
+    if args.object_id is None and args.object_name is None:
+        args.object_type = "workbook"
+        all_objects = get_object_list(server, args)
+        pick_object(all_objects, args)
+    if args.object_name and args.object_id is None:
+        options = TSC.RequestOptions()
+        options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
+                                        TSC.RequestOptions.Operator.Equals,
+                                        args.object_name))
+        filtered_projects, _ = server.workbooks.get(req_options=options)
+        # Result can either be a matching project or an empty list
+        if filtered_projects:
+            filtered_objects_name = [single_object.name for single_object in filtered_objects]
+            _, index = pick.pick(filtered_objects_name, title="Pick the {} you want to refresh".format(args.object_type))
+            args.object_id = filtered_objects[index].id
+        else:
+            print("No object named '{}' found".format(args.object_name))
+    if args.object_id:
+        workbook = server.workbooks.refresh(args.object_id)
+        if args.object_name is None:
+            args.object_name = server.workbooks.get_by_id(args.object_id).name
+        print("\nThe data of workbook {0} is refreshed.".format(args.object_name))
 
 
 def set_action_type(server, args):
-    """Creates dispatch table for the different action the user might
-    want to perform with the previously selected datasource"""
-
+    """Lets user choose between different actions"""
     action, index = pick.pick(['download', 'publish', 'refresh'],
             title="What action would you like to perform?", indicator='->')
     if action == "download":
         args.download = True
     elif action == "publish":
         args.publish = input("Please enter the path of the file you would like to publish:\n")
-    else:
-        pass
-
+    elif action == "refresh":
+        args.refresh = True
 
 
 def parse_arguments():
@@ -160,8 +169,8 @@ def parse_arguments():
                         help='content url for site the view is on')
     parser.add_argument('--username', '-u', required=False,
                         help='username to sign into server')
-    parser.add_argument('--view-name', '-v', required=False,
-                        help='name of view to download an image of')
+    parser.add_argument('--object-name', '-on', required=False,
+                        help='name of object to download')
     # mutually exclusive group of arguments about project info
     group_project = parser.add_mutually_exclusive_group(required=False)
     group_project.add_argument('--project-id', '-pid', required=False,
@@ -180,22 +189,24 @@ def main():
     authenticated = False
     while (authenticated is False):
         authenticated, server = authenticate(args)
-    #
+    # if the user didn't set the flags they will get prompted
+    # to choose an action (download, publish, refresh)
     if args.download is None and args.publish is None and args.refresh is False:
         set_action_type(server, args)
-    if args.object_type is None and args.download:
-        args.object_type, _ = pick.pick(['workbook', 'view', 'datasource'],
-                title='What do you want to download?', indicator='->')
     if args.download:
+        # id user didn't specify what type of object they want to
+        # download they'll get prompted to choose from a list
+        if args.object_type is None:
+            args.object_type, _ = pick.pick(['workbook', 'view', 'datasource'],
+                    title='What do you want to download?', indicator='->')
         all_objects = get_object_list(server, args)
-        #selected_object = select_one(all_objects, args)
         selected_object = pick_object(all_objects, args)
-        download_object(server, args, selected_object)
+        download(server, args, selected_object)
     elif args.publish:
         args.object_type = "projects"
         publish(server, args)
     elif args.refresh:
-        pass
+        refresh(server, args)
     server.auth.sign_out()
 
 
