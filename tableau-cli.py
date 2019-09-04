@@ -29,37 +29,24 @@ def authenticate(args):
         return (False, server)
 
 
-def get_object_list(server, args):
+def get_object_list(server, object_type):
     """Get a lists of all the objects (workbooks, views, projects or datasources) on the server"""
-    if args.object_type == "workbook":
+    if object_type == "workbook":
         all_objects, pagination_item = server.workbooks.get()
-    elif args.object_type == "datasource":
+    elif object_type == "datasource":
         all_objects, pagination_item = server.datasources.get()
-    elif args.object_type == "project":
+    elif object_type == "project":
         all_objects, pagination_item = server.projects.get()
-    elif args.object_type == "view":
+    elif object_type == "view":
         all_objects, pagination_item = server.views.get()
     return (all_objects)
 
 
-def pick_object(all_objects, args):
+def pick_object(all_objects, object_type):
     """Waits for the user to pick one of the objects"""
     all_objects_name = [single_object.name for single_object in all_objects]
-    option, index = pick.pick(all_objects_name, title="Choose a {}:".format(args.object_type), indicator='->')
-    args.object_id = all_objects[index].id
-    args.object_name = all_objects[index].name
-    return (all_objects[index])
-
-
-def select_one(all_objects, args):
-    """Waits for the user to choose one of the objects"""
-    objects_enum = enumerate(all_objects, start=1)
-    for index, data in objects_enum:
-        print("{}: {}".format(index, data.name))
-    selected_index = int(input("\nPlease enter the number of the {}:\n".format(args.object_type)))
-    args.object_id = all_objects[selected_index - 1].id
-    args.object_name = all_objects[selected_index - 1].name
-    return (all_objects[selected_index - 1])
+    option, index = pick.pick(all_objects_name, title="Choose a {}:".format(object_type), indicator='->')
+    return (all_objects[index], all_objects[index].id, all_objects[index].name)
 
 
 def download(server, args, selected_object):
@@ -88,22 +75,10 @@ def download(server, args, selected_object):
 
 def publish(server, args):
     if args.project_name is None and args.project_id is None:
-        args.object_type = "project"
-        all_objects = get_object_list(server, args)
-        pick_object(all_objects, args)
-        args.project_id = args.object_id
+        all_objects = get_object_list(server, "project")
+        _, args.project_id, args.object_name = pick_object(all_objects, "project")
     if args.project_name and args.project_id is None:
-        options = TSC.RequestOptions()
-        options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
-                                        TSC.RequestOptions.Operator.Equals,
-                                        args.project_name))
-        filtered_projects, _ = server.projects.get(req_options=options)
-        # Result can either be a matching project or an empty list
-        if filtered_projects:
-            project = filtered_projects.pop()
-            args.project_id = project.id
-        else:
-            print("No project named '{}' found".format(filter_project_name))
+        args.project_id = get_filtered_result(server, args.project_name, "project").id
     if args.project_id:
         new_workbook = TSC.WorkbookItem(args.project_id)
         new_workbook = server.workbooks.publish(new_workbook, args.publish, as_job=False, mode='CreateNew')
@@ -112,9 +87,8 @@ def publish(server, args):
 
 def refresh(server, args):
     if args.object_id is None and args.object_name is None:
-        args.object_type = "workbook"
-        all_objects = get_object_list(server, args)
-        pick_object(all_objects, args)
+        all_objects = get_object_list(server, "workbook")
+        _, args.object_id, args.object_name = pick_object(all_objects, "workbook")
     if args.object_name and args.object_id is None:
         options = TSC.RequestOptions()
         options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
@@ -162,7 +136,7 @@ def parse_arguments():
     parser.add_argument('--server-url', '-s', required=False,
                         help='server address')
     parser.add_argument('--object-type', '-o', required=False,
-                        help='type of object')
+                        help='workbook/view/datasource')
     parser.add_argument('--object-id', '-i', required=False,
                         help='id of the objects')
     parser.add_argument('--site-id', '-si', required=False,
@@ -184,8 +158,29 @@ def parse_arguments():
     return (args)
 
 
+def get_filtered_result(server, filter_by, category):
+    # set the filter request
+    options = TSC.RequestOptions()
+    options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
+                                    TSC.RequestOptions.Operator.Equals,
+                                    filter_by))
+    # send the request
+    if category == "project":
+        filtered_result, _ = server.projects.get(req_options=options)
+    elif category == "view":
+        filtered_result, _ = server.views.get(req_options=options)
+    elif category == "workbook":
+        filtered_result, _ = server.workbooks.get(req_options=options)
+    elif category == "datasource":
+        filtered_result, _ = server.datasources.get(req_options=options)
+    # return the last object in the list (if there are multiple)
+    return (filtered_result.pop())
+
+
 def main():
+    # parse the passed arguments
     args = parse_arguments()
+    # authenticate
     authenticated = False
     while (authenticated is False):
         authenticated, server = authenticate(args)
@@ -193,18 +188,26 @@ def main():
     # to choose an action (download, publish, refresh)
     if args.download is None and args.publish is None and args.refresh is False:
         set_action_type(server, args)
+    # if the user chose 'download'
     if args.download:
-        # id user didn't specify what type of object they want to
+        # if user didn't specify what type of object they want to
         # download they'll get prompted to choose from a list
         if args.object_type is None:
             args.object_type, _ = pick.pick(['workbook', 'view', 'datasource'],
                     title='What do you want to download?', indicator='->')
-        all_objects = get_object_list(server, args)
-        selected_object = pick_object(all_objects, args)
+        if args.object_name is None:
+            # get list of all the objects on the server of chosen type
+            all_objects = get_object_list(server, args.object_type)
+            # let user select one of the objects
+            selected_object, args.object_id, args.object_name = pick_object(all_objects, args.object_type)
+        else:
+            selected_object = get_filtered_result(server, args.object_name, args.object_type)
+            args.object_id = selected_object.id
         download(server, args, selected_object)
+    # if the user chose 'publish'
     elif args.publish:
-        args.object_type = "projects"
         publish(server, args)
+    # if the user chose 'refresh'
     elif args.refresh:
         refresh(server, args)
     server.auth.sign_out()
