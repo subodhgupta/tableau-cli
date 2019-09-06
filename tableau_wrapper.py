@@ -8,6 +8,210 @@ import argparse
 import pick
 
 
+def publish(resource_type, project_name, path, mode, server_url=None, username=None, password=None, server=None):
+    """
+    Publish a datasource
+    params: resource_type (type of the resource (workbook/datasource) to publish)
+            project_name (name of the project the datasource is stored in/should be stored in) REQUIRED
+            path (path of the datasource to publish)
+            mode (CreateNew, Overwrite, Append)
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            server (the server object if authenticated previosly)
+    return: ID of the published datasource
+    error:  NameError if resource_type is neither workbook nor datasource
+    """
+
+    # check if the either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server)
+    # if resource is a datasource create new object and publish
+    if resource_typ == "datasource":
+        project_id = None
+        # Use the project id to create new datsource_item
+        new_resource = TSC.DatasourceItem(project_id)
+        # publish data source (specified in file_path)
+        new_resource = server.datasources.publish(
+                        new_resource, path, mode)
+    # if resource is workbook create new object and publish
+    elif resource_type == "workbook":
+        project_id = get_filtered_result(server, project_name, "project").id
+        # create new workbook
+        new_resource = TSC.WorkbookItem(project_id)
+        # publish workbook
+        new_resource = server.workbooks.publish(new_resource, path, mode=mode, as_job=False)
+    # raise error if resource_type id neither workbook nor datasource
+    else:
+        raise NameError("Invalid resource_type")
+    return (new_resource.id)
+
+
+def refresh(resource_name, project_name, resource_type, server_url=None, username=None, password=None, path=None, server=None):
+    """
+    Refresh a workbook or datasource
+    params: resource_name (name of the workbook to download) REQUIRED
+            project_name (name of the project the workbook is stored in) REQUIRED
+            resource_type (workbook or datasource) REQUIRED
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            path (path to download the image to)
+            server (the server object if authenticated previosly)
+    return: ID of the refreshed workbook
+    error:  NameError if resource_type is neither workbook nor datasource
+    """
+
+    # check if the either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server)
+    # if resource is a workbook get the id and refresh
+    if resource_type == 'workbook':
+        resource_id = None
+        workbook = server.workbooks.refresh(resource_id)
+    # if resource is a datasource get the id and refresh
+    elif resource_type == 'datasoure':
+        resource_id = None
+        workbook = server.datasources.refresh(resource_id)
+    # raise error if resource_type id neither workbook nor datasource
+    else:
+        raise NameError("Invalid resource_type")
+    return (resource_id)
+
+
+def download(resource_type, resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, include_extract=True):
+    """
+    Downloads the datasource or workbook
+    params: resource_type (type of the resource (workbook/datasource) to download) REQUIRED
+            resource_name (name of the resource to download) REQUIRED
+            project_name (name of the project the resource is stored in) REQUIRED
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            path (path to download the resource to)
+            server (the server object if authenticated previosly)
+            include_extract (boolean if extract should be included in the download, by default True)
+    return: path of the downloaded resource
+    error:  NameError if resource_type is neither workbook nor datasource
+    """
+    path = os.getcwd() + "/" + "testiii"
+    # check if either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server_url, server)
+    # if resource is a workbook get the id and download
+    if resource_type == "workbook":
+        # get id
+        resource_id = get_resource_id(resource_type, resource_name, project_name, server)
+        # download datasource
+        file_path = server.workbooks.download(resource_id)
+    # if resource is a datasource get the id and download
+    elif resource_type == "datasource":
+        # get id
+        resource_id  = None
+        # download datasource
+        file_path = server.datasources.download(resource_id, path, include_extract)
+    # raise error if resource_type id neither workbook nor datasource
+    else:
+        raise NameError("Invalid resource_type")
+    return (file_path)
+
+
+def download_view_image(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, resolution="high"):
+    """
+    Downloads the view
+    params: resource_name (name of the workbook to download) REQUIRED
+            project_name (name of the project the workbook is stored in) REQUIRED
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            path (path to download the image to)
+            server (the server object if authenticated previosly)
+            resolution (resultion of the image)
+    return: path of the downloaded image
+    """
+
+    # check if the either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server)
+    # get id
+    resource_id, resource_object = None
+    # request for high resolution
+    if resolution == 'high':
+        imageresolution=TSC.ImageRequestOptions.Resolution.High
+    # request for medium resolution
+    if resolution == 'medium':
+        imageresolution=TSC.ImageRequestOptions.Resolution.Medium
+    # request for low resolution
+    if resolution == 'low':
+        imageresolution=TSC.ImageRequestOptions.Resolution.Low
+    # make request
+    image_req_option = TSC.ImageRequestOptions(imageresolution)
+    server.views.populate_image(resource_object, image_req_option)
+    # write to disk
+    with open(path, "wb") as image_file:
+            image_file.write(resource_object.image)
+    return (path)
+
+
+def download_view_csv():
+    print("work in progress")
+
+
+def download_view_pdf(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, orientation='portrait', filter_key=None, filter_value=None):
+    """
+    Download the view
+    params: resource_name (name of the workbook to download) REQUIRED
+            project_name (name of the project the workbook is stored in) REQUIRED
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            path (path to download the image to)
+            server (the server object if authenticated previosly)
+            orientation (orientation of the pdf (landscape/portrait))
+            filter_key (the key the view should get filtered on)
+            filter_value (the value for the key)
+    return: path of the downloaded pdf
+    """
+
+    # check if the either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server_url, server)
+    # get id
+    resource_id, resource_object = None
+    # set landscape orientation for the pdf
+    if orientation == 'landscape':
+        orientation_req = TSC.PDFRequestOptions.Orientation.Landscape
+    # set portrait orientation for the pdf
+    if orientation == 'portrait':
+        orientation_req = TSC.PDFRequestOptions.Orientation.Portrait
+    # set the PDF request options
+    pdf_req_option = TSC.PDFRequestOptions(page_type=TSC.PDFRequestOptions.PageType.A4, orientation=orientation_req)
+    # (optional) set a view filter
+    if filter_key and filter_value:
+        pdf_req_option.vf(filter_key, filter_value)
+    # retrieve the PDF for a view
+    server.views.populate_pdf(view_item, pdf_req_option)
+    file_path = server.workbooks.download(
+                resource_id, path, include_extract=extract,
+                no_extract=None)
+    return (file_path)
+
+
+def check_credentials_authenticate(username=None, password=None, server_url=None, server=None):
+    """
+    Authenticates with credentials if server object None
+    params: username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            server_url (url of the server)
+            server (the server object if authenticated previosly)
+    return: server object
+    error:  TypeError if credentials are missing (either the server object or username and password)
+    """
+
+    # check if the either all the necessary credentials or the server object are there
+    if server is None and (server_url or username or password) is None:
+        raise TypeError
+    # if no server object got passed in authenticate with the credentials
+    if server is None:
+        server = authenticate(server_url, username, password)
+    return (server)
+
+
 def authenticate(server_url, username, password):
     """
     Authenticates with the server
@@ -23,10 +227,114 @@ def authenticate(server_url, username, password):
         server = TSC.Server(server_url)
         server.use_server_version()
         server.auth.sign_in(tableau_auth)
+        print("Authentication successful.")
         return (server)
     except:
         print("Authentification failed.")
         raise AuthenticationError
+
+
+def get_project_id(project_name):
+    # set the filter request
+    options = TSC.RequestOptions()
+    options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
+                                    TSC.RequestOptions.Operator.Equals,
+                                    project_name))
+    filtered_result, _ = server.projects.get(req_options=options)
+    # return the last object in the list (if there are multiple)
+    return (filtered_result.pop().id)
+
+
+def get_resource_id(resource_type, resource_name, project_name, server):
+    # set the filter request
+    options = TSC.RequestOptions()
+    options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
+                                    TSC.RequestOptions.Operator.Equals,
+                                    resource_name))
+    """options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
+                                    TSC.RequestOptions.Operator.Equals,
+                                    project_name))"""
+    if resource_type == 'workbook':
+        filtered_result, _ = server.workbooks.get(req_options=options)
+    if resource_type == 'view':
+        filtered_result, _ = server.workbooks.get(req_options=options)
+   
+    # return the last object in the list (if there are multiple)
+    return (filtered_result.pop().id)
+
+
+# DELETE
+def download_datasource(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, include_extract=True):
+    """
+    Downloads the datasource
+    params: resource_name (name of the workbook to download) REQUIRED
+            project_name (name of the project the workbook is stored in) REQUIRED
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            path (path to download the image to)
+            server (the server object if authenticated previosly)
+            include_extract (boolean if extract should be included in the download
+    return: path of the downloaded datasource
+    """
+
+    # check if the either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server_url, server)
+    # get id
+    resource_id = None
+    # download datasource
+    file_path = server.datasources.download(resource_id, path, include_extract)
+    return (file_path)
+
+
+# DELETE
+def download_workbook(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, include_extract=True):
+    """
+    Downloads the workbook
+    params: resource_name (name of the workbook to download) REQUIRED
+            project_name (name of the project the workbook is stored in) REQUIRED
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            path (path to download the workbook to)
+            server (the server object if authenticated previosly)
+            include_extract (boolean if extract should be included in the download
+    return: path of the downloaded workbook
+    """
+
+    # check if either all the necessary credentials or server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server_url, server)
+    # get id
+    resource_id = None
+    # send request
+    file_path = server.workbooks.download(
+                resource_id, path, include_extract=include_extract)
+    return (file_path)
+
+
+# DELETE
+def publish_workbook(project_name, path, mode, server_url=None, username=None, password=None, server=None):
+    """
+    Publish a workbook
+    params: project_name (name of the project the workbook should be stored in) REQUIRED
+            path (path to the workbook to publish)
+            mode (CreateNew, Overwrite, Append)
+            server_url (the url of the server to connect with)
+            username (username of the user to authenticate with)
+            password (password of the user to authenticate with)
+            server (the server object if authenticated previosly)
+    return: ID of the published workbook
+    """
+
+    # check if the either all the necessary credentials or the server object are there and authenticate if necessary
+    server = check_credentials_authenticate(username, password, server_url, sever)
+    # get project id
+    project_id = None
+    # create new workbook
+    new_workbook = TSC.WorkbookItem(project_id)
+    # publish workbook
+    new_workbook = server.workbooks.publish(new_workbook, path, as_job=False, mode=mode)
+    return (new_workbook.id)
 
 
 def get_object_list(server, object_type):
@@ -47,184 +355,6 @@ def pick_object(all_objects, object_type):
     all_objects_name = [single_object.name for single_object in all_objects]
     option, index = pick.pick(all_objects_name, title="Choose a {}:".format(object_type), indicator='->')
     return (all_objects[index], all_objects[index].id, all_objects[index].name)
-
-
-def download_workbook(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, include_extract=True):
-    """
-    Downloads the workbook
-    params: resource_name (name of the workbook to download) REQUIRED
-            project_name (name of the project the workbook is stored in) REQUIRED
-            server_url (the url of the server to connect with)
-            username (username of the user to authenticate with)
-            password (password of the user to authenticate with)
-            path (path to download the workbook to)
-            server (the server object if authenticated previosly)
-            include_extract (boolean if extract should be included in the download
-    return: path of the downloaded workbook
-    """
-
-    # check if the either all the necessary credentials or the server object are there
-    if server is None and (server_url or username or password) is None:
-        raise TypeError
-    # if no server object got passed in authenticate with the credentials
-    if server is None:
-        server = authenticate(server_url, username, password)
-    # get id
-    resource_id = None
-    # send request
-    file_path = server.workbooks.download(
-                resource_id, path, include_extract=include_extract)
-    return (file_path)
-
-
-def download_view_pdf(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, orientation='portrait', filter_key=None, filter_value=None):
-    """
-    Downloads the view
-    params: resource_name (name of the workbook to download) REQUIRED
-            project_name (name of the project the workbook is stored in) REQUIRED
-            server_url (the url of the server to connect with)
-            username (username of the user to authenticate with)
-            password (password of the user to authenticate with)
-            path (path to download the image to)
-            server (the server object if authenticated previosly)
-            orientation (orientation of the pdf (landscape/portrait))
-            filter_key (the key the view should get filtered on)
-            filter_value (the value for the key)
-    return: path of the downloaded pdf
-    """
-
-    # check if the either all the necessary credentials or the server object are there
-    if server is None and (server_url or username or password) is None:
-        raise TypeError
-    # if no server object got passed in authenticate with the credentials
-    if server is None:
-        server = authenticate(server_url, username, password)
-    # get id
-    resource_id, resource_object = None
-    # set landscape orientation for the pdf
-    if orientation == 'landscape':
-        orientation_req = TSC.PDFRequestOptions.Orientation.Landscape
-    # set portrait orientation for the pdf
-    if orientation == 'portrait':
-        orientation_req = TSC.PDFRequestOptions.Orientation.Portrait
-    # set the PDF request options
-    pdf_req_option = TSC.PDFRequestOptions(page_type=TSC.PDFRequestOptions.PageType.A4, orientation=orientation_req)
-    # (optional) set a view filter
-    pdf_req_option.vf(filter_key, filter_value)
-    # retrieve the PDF for a view
-    server.views.populate_pdf(view_item, pdf_req_option)
-    file_path = server.workbooks.download(
-                resource_id, path, include_extract=extract,
-                no_extract=None)
-    return (file_path)
-
-
-def download_view_image(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, resolution="high"):
-    """
-    Downloads the view
-    params: resource_name (name of the workbook to download) REQUIRED
-            project_name (name of the project the workbook is stored in) REQUIRED
-            server_url (the url of the server to connect with)
-            username (username of the user to authenticate with)
-            password (password of the user to authenticate with)
-            path (path to download the image to)
-            server (the server object if authenticated previosly)
-            resolution (resultion of the image)
-    return: path of the downloaded image
-    """
-
-    # check if the either all the necessary credentials or the server object are there
-    if server is None and (server_url or username or password) is None:
-        raise TypeError
-    # if no server object got passed in authenticate with the credentials
-    if server is None:
-        server = authenticate(server_url, username, password)
-    # set filepath for downloading the file
-    if path is None:
-        path = os.getcwd() + "/" + resource_name + ".jpeg"
-    # get id
-    resource_id, resource_object = None
-    # request for high resolution
-    if resolution == 'high':
-        imageresolution=TSC.ImageRequestOptions.Resolution.High
-     # request for medium resolution
-    if resolution == 'medium':
-        imageresolution=TSC.ImageRequestOptions.Resolution.Medium
-    # request for low resolution
-    if resolution == 'low':
-        imageresolution=TSC.ImageRequestOptions.Resolution.Low
-    image_req_option = TSC.ImageRequestOptions(imageresolution)
-    server.views.populate_image(resource_object, image_req_option)
-    with open(path, "wb") as image_file:
-            image_file.write(resource_object.image)
-    return (path)
-
-
-def download_view_csv():
-    print("work in progress")
-
-
-def download_datasource(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, include_extract=True):
-    """
-    Downloads the datasource
-    params: resource_name (name of the workbook to download) REQUIRED
-            project_name (name of the project the workbook is stored in) REQUIRED
-            server_url (the url of the server to connect with)
-            username (username of the user to authenticate with)
-            password (password of the user to authenticate with)
-            path (path to download the image to)
-            server (the server object if authenticated previosly)
-            include_extract (boolean if extract should be included in the download
-    return: path of the downloaded datasource
-    """
-
-    # check if the either all the necessary credentials or the server object are there
-    if server is None and (server_url or username or password) is None:
-        raise TypeError
-    # if no server object got passed in authenticate with the credentials
-    if server is None:
-        server = authenticate(server_url, username, password)
-    # get id
-    resource_id, resource_object = None
-    # download datasource
-    file_path = server.datasources.download(resource_id, path, include_extract)
-    return (file_path)
-
-
-def publish(server, args):
-    if args.project_name is None and args.project_id is None:
-        all_objects = get_object_list(server, "project")
-        _, args.project_id, args.object_name = pick_object(all_objects, "project")
-    if args.project_name and args.project_id is None:
-        args.project_id = get_filtered_result(server, args.project_name, "project").id
-    if args.project_id:
-        new_workbook = TSC.WorkbookItem(args.project_id)
-        new_workbook = server.workbooks.publish(new_workbook, args.publish, as_job=False, mode='CreateNew')
-        print("Workbook published. ID: {0}".format(new_workbook.id))
-
-
-def refresh(server, args):
-    if args.object_id is None and args.object_name is None:
-        all_objects = get_object_list(server, "workbook")
-        _, args.object_id, args.object_name = pick_object(all_objects, "workbook")
-    if args.object_name and args.object_id is None:
-        options = TSC.RequestOptions()
-        options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
-                                        TSC.RequestOptions.Operator.Equals,
-                                        args.object_name))
-        filtered_projects, _ = server.workbooks.get(req_options=options)
-        # Result can either be a matching project or an empty list
-        if filtered_projects:
-            filtered_objects_name = [single_object.name for single_object in filtered_objects]
-            _, index = pick.pick(filtered_objects_name, title="Pick the {} you want to refresh".format(args.object_type))
-            args.object_id = filtered_objects[index].id
-        else:
-            print("No object named '{}' found".format(args.object_name))
-    if args.object_id:
-        workbook = server.workbooks.refresh(args.object_id)
-        if args.object_name is None:
-            args.object_name = server.workbooks.get_by_id(args.object_id).name
-        print("\nThe data of workbook {0} is refreshed.".format(args.object_name))
 
 
 def set_action_type(server, args):
@@ -336,5 +466,11 @@ def main():
     server.auth.sign_out()
 
 
+def test():
+    server = authenticate("Ss", "Ss", "Ss")
+    file_path = download("workbook", "goodreads", "Default", server=server)
+    print(filepath)
+
+
 if __name__ == "__main__":
-    main()
+    test()
