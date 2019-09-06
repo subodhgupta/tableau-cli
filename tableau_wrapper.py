@@ -10,7 +10,7 @@ import pick
 
 def publish(resource_type, project_name, path, mode, server_url=None, username=None, password=None, server=None):
     """
-    Publish a datasource
+    Publish a datasource or workbook
 
     Parameters:
     resource_type   -- workbook or datasource - REQUIRED
@@ -32,9 +32,10 @@ def publish(resource_type, project_name, path, mode, server_url=None, username=N
 
     # check if the either all the necessary credentials or the server object are there and authenticate if necessary
     server = check_credentials_authenticate(username, password, server)
+    # get project_id
+    project_id = get_project_id(project_name, server)
     # if resource is a datasource create new object and publish
-    if resource_typ == "datasource":
-        project_id = None
+    if resource_type == "datasource":
         # Use the project id to create new datsource_item
         new_resource = TSC.DatasourceItem(project_id)
         # publish data source (specified in file_path)
@@ -42,12 +43,11 @@ def publish(resource_type, project_name, path, mode, server_url=None, username=N
                         new_resource, path, mode)
     # if resource is workbook create new object and publish
     elif resource_type == "workbook":
-        project_id = get_filtered_result(server, project_name, "project").id
         # create new workbook
         new_resource = TSC.WorkbookItem(project_id)
         # publish workbook
         new_resource = server.workbooks.publish(new_resource, path, mode=mode, as_job=False)
-    # raise error if resource_type id neither workbook nor datasource
+    # raise error if resource_type is neither workbook nor datasource
     else:
         raise NameError("Invalid resource_type")
     return (new_resource.id)
@@ -75,13 +75,13 @@ def refresh(resource_type, resource_name, project_name, server_url=None, usernam
 
     # check if the either all the necessary credentials or the server object are there and authenticate if necessary
     server = check_credentials_authenticate(username, password, server)
+    # get id
+    resource_id, _ = get_resource_id(resource_type, resource_name, project_name, server)
     # if resource is a workbook get the id and refresh
     if resource_type == 'workbook':
-        resource_id = None
         workbook = server.workbooks.refresh(resource_id)
     # if resource is a datasource get the id and refresh
     elif resource_type == 'datasoure':
-        resource_id = None
         workbook = server.datasources.refresh(resource_id)
     # raise error if resource_type id neither workbook nor datasource
     else:
@@ -113,17 +113,15 @@ def download(resource_type, resource_name, project_name, server_url=None, userna
 
     # check if either all the necessary credentials or the server object are there and authenticate if necessary
     server = check_credentials_authenticate(username, password, server_url, server)
+    # get id
+    resource_id, _ = get_resource_id(resource_type, resource_name, project_name, server)
     # if resource is a workbook get the id and download
     if resource_type == "workbook":
         no_extract =  not include_extract
-        # get id
-        resource_id = get_resource_id(resource_type, resource_name, project_name, server)
         # download datasource
         file_path = server.workbooks.download(resource_id, filepath=path, no_extract=no_extract)
     # if resource is a datasource get the id and download
     elif resource_type == "datasource":
-        # get id
-        resource_id  = None
         # download datasource
         file_path = server.datasources.download(resource_id, path=path, include_extract=include_extract)
     # raise error if resource_type id neither workbook nor datasource
@@ -132,13 +130,12 @@ def download(resource_type, resource_name, project_name, server_url=None, userna
     return (file_path)
 
 
-def download_view_image(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, resolution="high"):
+def download_view_image(resource_name, server_url=None, username=None, password=None, path=None, server=None, resolution="high"):
     """
     Download a view as image
 
     Parameters:
     resource_name   -- name of the resource to download - REQUIRED
-    project_name    -- name of the project the resource is stored in - REQUIRED
     path            -- path of the resource to download to (current working directory by default)
     server_url      -- the url of the server to connect with
     username        -- username of the user to authenticate with
@@ -156,7 +153,8 @@ def download_view_image(resource_name, project_name, server_url=None, username=N
     # check if the either all the necessary credentials or the server object are there and authenticate if necessary
     server = check_credentials_authenticate(username, password, server)
     # get id
-    resource_id, resource_object = None
+    resource_id, resource_object = get_resource_id("view", resource_name, project_name=None, server=server)
+    print(resource_id, resource_object)
     # request for high resolution
     if resolution == 'high':
         imageresolution=TSC.ImageRequestOptions.Resolution.High
@@ -172,6 +170,8 @@ def download_view_image(resource_name, project_name, server_url=None, username=N
     image_req_option = TSC.ImageRequestOptions(imageresolution)
     server.views.populate_image(resource_object, image_req_option)
     # write to disk
+    if path is None:
+        path = os.getcwd() + "/" + resource_object.name + ".jpeg"
     with open(path, "wb") as image_file:
             image_file.write(resource_object.image)
     return (path)
@@ -202,8 +202,8 @@ def download_view_pdf(resource_name, project_name, server_url=None, username=Non
 
     # check if the either all the necessary credentials or the server object are there and authenticate if necessary
     server = check_credentials_authenticate(username, password, server_url, server)
-    # get id
-    resource_id, resource_object = None
+    # get id and object
+    resource_id, resource_object = get_resource_id("view", resource_name, project_name=None, server=server)
     # set landscape orientation for the pdf
     if orientation == 'landscape':
         orientation_req = TSC.PDFRequestOptions.Orientation.Landscape
@@ -276,11 +276,9 @@ def authenticate(server_url, username, password):
         server = TSC.Server(server_url)
         server.use_server_version()
         server.auth.sign_in(tableau_auth)
-        print("Authentication successful.")
         return (server)
     except:
-        print("Authentification failed.")
-        raise AuthError
+        raise AuthError("Authentication failed")
 
 
 def get_project_id(project_name, server):
@@ -323,6 +321,7 @@ def get_resource_id(resource_type, resource_name, project_name, server):
 
     Return value(s):
     resource_id     -- ID of the resource
+    resource_object -- object
 
     Exception(s):
     NameError       -- if resource_type is neither workbook nor view
@@ -344,13 +343,16 @@ def get_resource_id(resource_type, resource_name, project_name, server):
         raise NameError("Invalid resource_type")
     if not filtered_result:
         raise NameError("No {} with the name '{}' on the server".format(resource_type, resource_name))
+    if resource_type == "view":
+        result = filtered_result.pop()
+        return (result.id, result)
     for result in filtered_result:
         if result.project_name == project_name:
-            return (result.id)
+            return (result.id, result)
     raise NameError("No project with the name '{}' on the server".format(project_name))
 
 
-def get_object_list(resource_type, server):
+def get_resource_list(resource_type, server):
     """
     Get a list of the resources of type resource_type on the server
 
@@ -449,6 +451,58 @@ def parse_arguments():
     return (args)
 
 
+def download_cli(server, args):
+    # if user didn't specify what type of object they want to
+    # download they'll get prompted to choose from a list
+    if args.object_type is None:
+        args.object_type, _ = pick.pick(['workbook', 'view', 'datasource'],
+                title='What do you want to download?', indicator='->')
+    if args.object_name is None:
+        # get list of all the objects on the server of chosen type
+        all_objects = get_resource_list(args.object_type, server)
+        # let user select one of the objects
+        selected_object, args.object_id, args.object_name = pick_object(all_objects, args.object_type)
+    else:
+        selected_object = get_filtered_result(server, args.object_name, args.object_type)
+        args.object_id = selected_object.id
+    if args.object_type == "workbook" or args.object_type == "datasource":
+        project_name = selected_object.project_name
+        download(resource_type=args.object_type, resource_name=args.object_name, project_name=project_name, server=server)
+    elif args.object_type == "view":
+        download_view_image(args.object_name, server=server)
+
+
+def publish_cli(server, args):
+    # if user hasn't specified yet what the resource_type is let them choose one
+    if args.object_type is None:
+        args.object_type, _ = pick.pick(['workbook', 'datasource'],
+                title='What do you want to publish?', indicator='->')
+    # if user hasn't specified a resource_name yet let them pick one
+    if args.project_name is None:
+        # get list of all the objects on the server of chosen type
+        all_objects = get_resource_list("project", server)
+        # let user select one of the objects
+        selected_object, project_id_id, project_name = pick_object(all_objects, "project")
+    # publish resource
+    publish(resource_type=args.object_type, path=args.publish,
+        project_name=project_name, mode="CreateNew", server=server)
+
+
+def refresh_cli(server, args):
+    # if user hasn't specified yet what the resource_type is let them choose one
+    if args.object_type is None:
+        args.object_type, _ = pick.pick(['workbook', 'datasource'],
+                title='What do you want to refresh?', indicator='->')
+    # if user hasn't specified a resource_name yet let them pick one
+    if args.object_name is None:
+        # get list of all the objects on the server of chosen type
+        all_objects = get_resource_list(args.object_type, server)
+        # let user select one of the objects
+        resource_object, _, args.object_name = pick_object(all_objects, args.object_type)
+    # refresh the resource
+    refresh(args.object_type, args.object_name, resource_object.project_name, server=server)
+
+
 def main():
     # parse the passed arguments
     args = parse_arguments()
@@ -458,7 +512,6 @@ def main():
         # get credentials from user
         server_url = input("Server: ")
         username = str(input("Username: "))
-        username = str(input("Username: "))
         password = getpass()
         server = authenticate(server_url, username, password)
     # if the user didn't set the flags they will get prompted
@@ -467,33 +520,14 @@ def main():
         set_action_type(server, args)
     # if the user chose 'download'
     if args.download:
-        # if user didn't specify what type of object they want to
-        # download they'll get prompted to choose from a list
-        if args.object_type is None:
-            args.object_type, _ = pick.pick(['workbook', 'view', 'datasource'],
-                    title='What do you want to download?', indicator='->')
-        if args.object_name is None:
-            # get list of all the objects on the server of chosen type
-            all_objects = get_object_list(server, args.object_type)
-            # let user select one of the objects
-            selected_object, args.object_id, args.object_name = pick_object(all_objects, args.object_type)
-        else:
-            selected_object = get_filtered_result(server, args.object_name, args.object_type)
-            args.object_id = selected_object.id
-        download(server, args, selected_object)
+        download_cli(server, args)
     # if the user chose 'publish'
     elif args.publish:
-        publish(server, args)
+        publish_cli(server, args)
     # if the user chose 'refresh'
     elif args.refresh:
-        refresh(server, args)
+        refresh_cli(server, args)
     server.auth.sign_out()
-
-
-def test():
-    server = authenticate("Ss", "Ss", "Ss")
-    filepath = download("workbook", "goodreads", "Default", server=server, path="testiiiiiii")
-    print(filepath)
 
 
 # DELETE
@@ -590,6 +624,5 @@ def publish_workbook(project_name, path, mode, server_url=None, username=None, p
     return (new_workbook.id)
 
 
-
 if __name__ == "__main__":
-    test()
+    main()
