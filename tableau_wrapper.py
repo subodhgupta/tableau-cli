@@ -177,10 +177,6 @@ def download_view_image(resource_name, project_name, server_url=None, username=N
     return (path)
 
 
-def download_view_csv():
-    pass
-
-
 def download_view_pdf(resource_name, project_name, server_url=None, username=None, password=None, path=None, server=None, orientation='portrait', filter_key=None, filter_value=None):
     """
     Download a view as PDF
@@ -227,6 +223,10 @@ def download_view_pdf(resource_name, project_name, server_url=None, username=Non
                 resource_id, path, include_extract=extract,
                 no_extract=None)
     return (file_path)
+
+
+def download_view_csv():
+    pass
 
 
 def check_credentials_authenticate(username=None, password=None, server_url=None, server=None):
@@ -298,7 +298,6 @@ def get_project_id(project_name, server):
     NameError       -- invalid project_name
     """
 
-
     # set the filter options
     options = TSC.RequestOptions()
     options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
@@ -351,24 +350,54 @@ def get_resource_id(resource_type, resource_name, project_name, server):
     raise NameError("No project with the name '{}' on the server".format(project_name))
 
 
-def get_object_list(server, object_type):
-    """Get a lists of all the objects (workbooks, views, projects or datasources) on the server"""
-    if object_type == "workbook":
-        all_objects, pagination_item = server.workbooks.get()
-    elif object_type == "datasource":
-        all_objects, pagination_item = server.datasources.get()
-    elif object_type == "project":
-        all_objects, pagination_item = server.projects.get()
-    elif object_type == "view":
-        all_objects, pagination_item = server.views.get()
-    return (all_objects)
+def get_object_list(resource_type, server):
+    """
+    Get a list of the resources of type resource_type on the server
+
+    Parameters:
+    resource_type   -- type of the resources ('workbook'/'view'/'datasource'/'project') - REQ
+    server          -- the server object - REQ
+
+    Return value(s):
+    all_resources   -- list of all resources as objects
+
+    Exception(s):
+    NameError       -- invalid resource_type
+    """
+
+    if resource_type == "workbook":
+        all_resources, pagination_item = server.workbooks.get()
+    elif resource_type == "datasource":
+        all_resources, pagination_item = server.datasources.get()
+    elif resource_type == "project":
+        all_resources, pagination_item = server.projects.get()
+    elif resource_type == "view":
+        all_resources, pagination_item = server.views.get()
+    else:
+        raise NameError("Invalid resource_type '{}'".format(resource_type))
+    return (all_resources)
 
 
-def pick_object(all_objects, object_type):
-    """Waits for the user to pick one of the objects"""
-    all_objects_name = [single_object.name for single_object in all_objects]
-    option, index = pick.pick(all_objects_name, title="Choose a {}:".format(object_type), indicator='->')
-    return (all_objects[index], all_objects[index].id, all_objects[index].name)
+def pick_object(all_resources, resource_type):
+    """
+    CLI - waits for the user to pick one of the resources
+
+    Parameters:
+    all_resources   -- list of all resources as objects
+    resource_type   -- type of the resources ('workbook'/'view'/'datasource'/'project') - REQ
+
+    Return value(s):
+    resource        -- selected resource object
+    resource_id     -- id of selected resource
+    resource_name   -- name of selected resource
+
+    Exception(s):
+    NameError       -- invalid resource_type
+    """
+
+    all_resources_name = [single_object.name for single_object in all_resources]
+    option, index = pick.pick(all_resources_name, title="Choose a {}:".format(resource_type), indicator='->')
+    return (all_resources[index], all_resources[index].id, all_resources[index].name)
 
 
 def set_action_type(server, args):
@@ -420,25 +449,6 @@ def parse_arguments():
     return (args)
 
 
-def get_filtered_result(server, filter_by, category):
-    # set the filter request
-    options = TSC.RequestOptions()
-    options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
-                                    TSC.RequestOptions.Operator.Equals,
-                                    filter_by))
-    # send the request
-    if category == "project":
-        filtered_result, _ = server.projects.get(req_options=options)
-    elif category == "view":
-        filtered_result, _ = server.views.get(req_options=options)
-    elif category == "workbook":
-        filtered_result, _ = server.workbooks.get(req_options=options)
-    elif category == "datasource":
-        filtered_result, _ = server.datasources.get(req_options=options)
-    # return the last object in the list (if there are multiple)
-    return (filtered_result.pop())
-
-
 def main():
     # parse the passed arguments
     args = parse_arguments()
@@ -484,6 +494,26 @@ def test():
     server = authenticate("Ss", "Ss", "Ss")
     filepath = download("workbook", "goodreads", "Default", server=server, path="testiiiiiii")
     print(filepath)
+
+
+# DELETE
+def get_filtered_resources(server, filter_by, category):
+    # set the filter request
+    options = TSC.RequestOptions()
+    options.filter.add(TSC.Filter(TSC.RequestOptions.Field.Name,
+                                    TSC.RequestOptions.Operator.Equals,
+                                    filter_by))
+    # send the request
+    if category == "project":
+        filtered_result, _ = server.projects.get(req_options=options)
+    elif category == "view":
+        filtered_result, _ = server.views.get(req_options=options)
+    elif category == "workbook":
+        filtered_result, _ = server.workbooks.get(req_options=options)
+    elif category == "datasource":
+        filtered_result, _ = server.datasources.get(req_options=options)
+    # return the last object in the list (if there are multiple)
+    return (filtered_result.pop())
 
 
 # DELETE
